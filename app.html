@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WP Digest Dropbox App</title>
+<style>
+:root{--ink:#222;--muted:#667;--line:#d9deea;--panel:#f4f6fa;--accent:#1a3a5c;--ok:#0a7a24;--bad:#b00020;--warn:#8a5b00}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','Segoe UI',system-ui,sans-serif;max-width:1180px;margin:0 auto;padding:1.2em 1em 6em;color:var(--ink);line-height:1.5;background:#fff}
+h1{border-bottom:2px solid var(--accent);padding-bottom:.35em;margin:.3em 0 .7em}
+.topbar,.panel,.filters,.review-actions{background:var(--panel);border:1px solid #ccd;padding:1em 1.1em;border-radius:10px;margin:1em 0}
+.topbar{display:flex;flex-wrap:wrap;gap:.6em;align-items:center;justify-content:space-between}.topbar .left{display:flex;flex-wrap:wrap;gap:.6em;align-items:center}.topbar .right{font-size:.92em;color:var(--muted)}
+button,.button-link{display:inline-block;padding:.5em .9em;margin:.1em .25em .1em 0;cursor:pointer;border:1px solid var(--accent);background:#fff;border-radius:6px;color:var(--accent);text-decoration:none;font-size:.92em}button:hover,.button-link:hover{background:var(--accent);color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
+input[type="search"],input[type="text"],textarea,select{border:1px solid #c8ceda;border-radius:6px;padding:.45em;background:#fff;font-family:inherit;font-size:.95em}textarea{width:100%;min-height:42px;resize:vertical}.wide{width:100%}.help{font-size:.9em;color:var(--muted);margin:.3em 0 .7em}.status{font-size:.94em;padding:.5em .7em;border-radius:6px;background:#fff;border:1px solid #dfe5ef;color:#4e5c69}.msg-ok{color:var(--ok)}.msg-error{color:var(--bad)}.msg-warn{color:var(--warn)}
+.filter-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:.8em;align-items:start}.filter-box{background:#fff;border:1px solid #e0e4ec;border-radius:8px;padding:.75em}.filter-box h4{margin:.1em 0 .45em}.checkboxes{display:flex;flex-wrap:wrap;gap:.35em .7em}.checkline{display:inline-flex;align-items:center;gap:.25em}.small{font-size:.88em;color:var(--muted)}
+.date{font-size:1.1em;font-weight:bold;cursor:pointer;padding:.6em 0;color:var(--accent)}.date-group{margin-top:.5em}.card{border-left:3px solid var(--accent);padding:.75em 1em;margin:.75em 0;background:#fafbfd;border-radius:0 8px 8px 0}.title a{color:var(--accent);text-decoration:none;font-weight:bold;font-size:1.04em}.title a:hover{text-decoration:underline}.meta{color:var(--muted);font-size:.9em;margin:.35em 0}.summary{background:#fff;padding:.6em .8em;border-radius:6px;margin:.5em 0;font-size:.95em;border:1px solid #e0e4ec}.abstract{font-size:.88em;color:#444;padding:.55em;background:#fff;border-radius:6px;border:1px solid #e0e4ec}.annotation-panel{display:grid;grid-template-columns:110px 160px 1fr 1fr;gap:.6em;align-items:start;background:#eef4fb;border:1px solid #d6e1ef;border-radius:8px;padding:.65em;margin:.65em 0}.annotation-panel label{font-size:.9em}.annotation-panel select{width:100%}.empty{background:#fff6dc;border:1px solid #f1d58a;padding:1em;border-radius:10px}
+.quick-jump{position:fixed;right:18px;bottom:18px;background:rgba(255,255,255,.96);border:1px solid #cbd5e4;border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:.4em;display:flex;gap:.3em;z-index:50}.quick-jump button{margin:0;border-radius:999px;padding:.45em .7em}.hidden{display:none!important}
+@media(max-width:900px){.filter-grid{grid-template-columns:1fr}.annotation-panel{grid-template-columns:1fr}.topbar{display:block}.quick-jump{left:8px;right:8px;bottom:8px;justify-content:center;border-radius:16px}.quick-jump button{font-size:.82em;padding:.45em .55em}body{padding-bottom:7em}}
+</style>
+</head>
+<body>
+<h1>Working Paper Digest</h1>
+<div class="topbar" id="topbar">
+  <div class="left">
+    <button id="btn-login" onclick="startDropboxLogin()">Dropbox 로그인</button>
+    <button id="btn-load" onclick="loadFromDropbox()" disabled>Dropbox에서 불러오기</button>
+    <button id="btn-save" onclick="saveNotesToDropbox()" disabled>Dropbox에 저장</button>
+    <button id="btn-logout" onclick="logoutDropbox()" disabled>로그아웃/토큰 삭제</button>
+  </div>
+  <div class="right" id="auth-status">Dropbox에 로그인하지 않았습니다.</div>
+</div>
+
+<div class="panel">
+  <b>사용 방법</b>
+  <p class="help">이 페이지는 Dropbox App folder 안의 <code>papers.json</code>과 <code>paper_notes.json</code>을 읽고, 중요도·읽기 여부·메모·태그는 <code>paper_notes.json</code>으로 다시 저장합니다. 스마트폰에서는 이 페이지를 HTTPS 주소로 열고 Dropbox 로그인 후 사용하세요.</p>
+  <div class="status" id="status-box">준비 중입니다.</div>
+</div>
+
+<div class="review-actions" id="review-actions-section">
+  <button onclick="saveNotesLocal(true)">브라우저에 임시저장</button>
+  <button onclick="downloadNotesJson()">paper_notes.json 다운로드</button>
+  <button onclick="copyNotesJson()">paper_notes.json 복사</button>
+  <button onclick="loadLocalPapersJson()">같은 폴더의 papers.json 불러오기</button>
+  <span id="notes-msg"></span>
+</div>
+
+<div class="filters" id="filter-section">
+  <h3>필터</h3>
+  <div class="filter-grid">
+    <div class="filter-box">
+      <h4>검색</h4>
+      <input class="wide" id="search-box" type="search" placeholder="제목, 저자, 초록, 메모, tag 검색" oninput="applyPaperFilters()">
+      <p class="small">여러 단어를 입력하면 모든 단어가 들어간 논문만 표시합니다.</p>
+      <label><b>읽기 여부</b><br>
+        <select id="filter-read-later" onchange="applyPaperFilters()">
+          <option value="all">전체</option>
+          <option value="yes">나중에 읽을 논문만</option>
+          <option value="no">나중에 읽지 않을 논문만</option>
+        </select>
+      </label>
+    </div>
+    <div class="filter-box">
+      <h4>중요성</h4>
+      <div id="importance-filter-box" class="checkboxes"></div>
+    </div>
+    <div class="filter-box">
+      <h4>Source</h4>
+      <div><button onclick="setAllSources(true)">전체 선택</button><button onclick="setAllSources(false)">전체 해제</button></div>
+      <div id="source-filter-box" class="checkboxes"></div>
+    </div>
+    <div class="filter-box">
+      <h4>User Tags</h4>
+      <button onclick="refreshTagFilters()">태그 목록 새로고침</button>
+      <div id="tag-filter-box" class="checkboxes"></div>
+      <p class="small">태그 선택 없음 = 전체 표시</p>
+    </div>
+    <div class="filter-box">
+      <h4>필터 상태</h4>
+      <button onclick="resetReviewFilters()">필터 초기화</button>
+      <p id="filter-count" class="small"></p>
+    </div>
+  </div>
+</div>
+
+<div id="papers-container"><p class="empty">Dropbox에 로그인한 뒤 <b>Dropbox에서 불러오기</b>를 누르세요. PC 테스트용으로는 <b>같은 폴더의 papers.json 불러오기</b>도 사용할 수 있습니다.</p></div>
+
+<div class="quick-jump" aria-label="빠른 이동 메뉴">
+  <button type="button" onclick="scrollToId('filter-section')">🔎 필터로</button>
+  <button type="button" onclick="scrollToId('review-actions-section')">💾 저장 메뉴</button>
+  <button type="button" onclick="scrollToId('topbar')">Dropbox</button>
+  <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">▲ 맨 위</button>
+</div>
+
+<script>
+const DROPBOX_APP_KEY = "ofjhtkov2o6aa7b";
+const PAPERS_PATH = "/papers.json";
+const NOTES_PATH = "/paper_notes.json";
+const TOKEN_KEY = "wp_digest_dropbox_token_v1";
+const LOCAL_NOTES_KEY = "wp_digest_dropbox_notes_cache_v1";
+const PKCE_VERIFIER_KEY = "wp_digest_pkce_verifier_v1";
+const OAUTH_STATE_KEY = "wp_digest_oauth_state_v1";
+let paperData = [];
+let paperNotes = {};
+let currentToken = null;
+
+function nowIso(){ return new Date().toISOString(); }
+function redirectUri(){ return window.location.origin + window.location.pathname; }
+function escapeHtml(value){ return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function setMessage(id, msg, kind='ok'){ const el=document.getElementById(id); if(!el) return; el.textContent=msg||''; el.className=kind==='error'?'msg-error':(kind==='warn'?'msg-warn':'msg-ok'); }
+function setStatus(msg, kind='ok'){ const el=document.getElementById('status-box'); if(!el) return; el.textContent=msg||''; el.className='status '+(kind==='error'?'msg-error':(kind==='warn'?'msg-warn':'msg-ok')); }
+function scrollToId(id){ const el=document.getElementById(id); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+function base64Url(buffer){ return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function randomString(len=64){ const arr=new Uint8Array(len); crypto.getRandomValues(arr); return Array.from(arr,b=>('0'+b.toString(16)).slice(-2)).join(''); }
+async function sha256(text){ return await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)); }
+
+function loadStoredToken(){
+  try{ currentToken = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); }catch(e){ currentToken=null; }
+  updateAuthButtons();
+}
+function storeToken(t){ currentToken=t; localStorage.setItem(TOKEN_KEY, JSON.stringify(t)); updateAuthButtons(); }
+function clearToken(){ currentToken=null; localStorage.removeItem(TOKEN_KEY); updateAuthButtons(); }
+function isTokenUsable(){ return currentToken && currentToken.access_token && Date.now() < (currentToken.expires_at || 0); }
+async function getAccessToken(){
+  if(isTokenUsable()) return currentToken.access_token;
+  if(currentToken && currentToken.refresh_token){
+    const params = new URLSearchParams({grant_type:'refresh_token', refresh_token:currentToken.refresh_token, client_id:DROPBOX_APP_KEY});
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:params});
+    if(res.ok){
+      const data = await res.json();
+      storeToken({access_token:data.access_token, refresh_token:currentToken.refresh_token, expires_at:Date.now() + (data.expires_in || 14400)*1000 - 60000});
+      return currentToken.access_token;
+    }
+    clearToken();
+  }
+  throw new Error('Dropbox 로그인이 필요합니다.');
+}
+function updateAuthButtons(){
+  const logged = !!(currentToken && (currentToken.access_token || currentToken.refresh_token));
+  document.getElementById('btn-load').disabled = !logged;
+  document.getElementById('btn-save').disabled = !logged || paperData.length === 0;
+  document.getElementById('btn-logout').disabled = !logged;
+  document.getElementById('auth-status').textContent = logged ? 'Dropbox 연결됨. App folder: /papers.json, /paper_notes.json' : 'Dropbox에 로그인하지 않았습니다.';
+}
+async function startDropboxLogin(){
+  if(!DROPBOX_APP_KEY || DROPBOX_APP_KEY.includes('여기에')){ setStatus('Dropbox App key가 설정되어 있지 않습니다.', 'error'); return; }
+  const verifier = randomString(48);
+  const challenge = base64Url(await sha256(verifier));
+  const state = randomString(16);
+  sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+  sessionStorage.setItem(OAUTH_STATE_KEY, state);
+  const params = new URLSearchParams({
+    client_id:DROPBOX_APP_KEY,
+    response_type:'code',
+    redirect_uri:redirectUri(),
+    code_challenge:challenge,
+    code_challenge_method:'S256',
+    token_access_type:'offline',
+    scope:'files.metadata.read files.content.read files.content.write',
+    state:state
+  });
+  window.location.href = 'https://www.dropbox.com/oauth2/authorize?' + params.toString();
+}
+async function handleOAuthCallback(){
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const err = url.searchParams.get('error_description') || url.searchParams.get('error');
+  if(err){ setStatus('Dropbox 로그인 실패: '+err, 'error'); return; }
+  if(!code) return;
+  const expected = sessionStorage.getItem(OAUTH_STATE_KEY);
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  if(!verifier || state !== expected){ setStatus('OAuth state가 맞지 않습니다. 다시 로그인하세요.', 'error'); return; }
+  const params = new URLSearchParams({grant_type:'authorization_code', code:code, client_id:DROPBOX_APP_KEY, redirect_uri:redirectUri(), code_verifier:verifier});
+  const res = await fetch('https://api.dropboxapi.com/oauth2/token', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:params});
+  if(!res.ok){ const txt=await res.text(); setStatus('토큰 교환 실패: '+txt, 'error'); return; }
+  const data = await res.json();
+  storeToken({access_token:data.access_token, refresh_token:data.refresh_token || '', expires_at:Date.now() + (data.expires_in || 14400)*1000 - 60000});
+  sessionStorage.removeItem(PKCE_VERIFIER_KEY); sessionStorage.removeItem(OAUTH_STATE_KEY);
+  history.replaceState({}, document.title, window.location.pathname);
+  setStatus('Dropbox 로그인이 완료되었습니다. Dropbox에서 불러오기를 누르세요.');
+}
+function logoutDropbox(){ clearToken(); setStatus('Dropbox 연결 정보를 이 브라우저에서 삭제했습니다.'); }
+
+async function dropboxDownloadText(path){
+  const token = await getAccessToken();
+  const res = await fetch('https://content.dropboxapi.com/2/files/download', {method:'POST', headers:{'Authorization':'Bearer '+token, 'Dropbox-API-Arg':JSON.stringify({path})}});
+  if(res.status === 409) throw new Error(path + ' 파일을 Dropbox App folder에서 찾지 못했습니다.');
+  if(!res.ok) throw new Error(await res.text());
+  return await res.text();
+}
+async function dropboxUploadText(path, text){
+  const token = await getAccessToken();
+  const arg = {path:path, mode:'overwrite', autorename:false, mute:false, strict_conflict:false};
+  const res = await fetch('https://content.dropboxapi.com/2/files/upload', {method:'POST', headers:{'Authorization':'Bearer '+token, 'Dropbox-API-Arg':JSON.stringify(arg), 'Content-Type':'application/octet-stream'}, body:text});
+  if(!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+function normalizePapersPayload(data){
+  if(Array.isArray(data)) return data;
+  if(data && Array.isArray(data.papers)) return data.papers;
+  return [];
+}
+function cleanImportance(value){ value=String(value||'').trim(); return ['1','2','3','4','5'].includes(value)?value:''; }
+function cleanBool(value){ if(value===true) return true; return ['1','true','yes','y','on','checked','예','읽기'].includes(String(value||'').trim().toLowerCase()); }
+function splitTags(value){ return String(value||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean).filter((v,i,a)=>a.findIndex(x=>x.toLowerCase()===v.toLowerCase())===i); }
+function normalizeNotesPayload(data){
+  const raw = data && data.papers ? data.papers : data;
+  const out = {};
+  if(!raw || typeof raw !== 'object') return out;
+  Object.keys(raw).forEach(id => {
+    const n = raw[id] || {};
+    const tags = Array.isArray(n.tags) ? n.tags : splitTags(n.tags);
+    const importance = cleanImportance(n.importance);
+    const readLater = cleanBool(n.read_later);
+    const memo = String(n.memo || '');
+    if(importance || readLater || memo.trim() || tags.length){ out[id] = {importance, read_later:readLater, memo, tags}; }
+  });
+  return out;
+}
+function notesPayload(){ return {version:2, saved_at:nowIso(), papers:collectNotesFromPage()}; }
+
+async function loadFromDropbox(){
+  try{
+    setStatus('Dropbox에서 papers.json과 paper_notes.json을 읽는 중입니다...');
+    const papersText = await dropboxDownloadText(PAPERS_PATH);
+    paperData = normalizePapersPayload(JSON.parse(papersText));
+    let notes = {};
+    try{ notes = normalizeNotesPayload(JSON.parse(await dropboxDownloadText(NOTES_PATH))); }
+    catch(e){ setMessage('notes-msg','paper_notes.json이 없어 빈 notes로 시작합니다. 저장하면 새로 생성됩니다.','warn'); }
+    paperNotes = notes;
+    renderAll();
+    saveNotesLocal(false);
+    setStatus(`Dropbox에서 ${paperData.length}개 논문과 ${Object.keys(paperNotes).length}개 notes를 불러왔습니다.`);
+  }catch(e){ setStatus('Dropbox 불러오기 실패: '+(e.message||e), 'error'); }
+}
+async function saveNotesToDropbox(){
+  try{
+    const payload = notesPayload();
+    const text = JSON.stringify(payload, null, 2);
+    await dropboxUploadText(NOTES_PATH, text);
+    localStorage.setItem(LOCAL_NOTES_KEY, text);
+    setStatus(`Dropbox에 paper_notes.json 저장 완료: ${Object.keys(payload.papers).length}개 notes`);
+    setMessage('notes-msg','Dropbox 저장 완료');
+  }catch(e){ setStatus('Dropbox 저장 실패: '+(e.message||e), 'error'); }
+}
+async function loadLocalPapersJson(){
+  try{
+    const res = await fetch('papers.json', {cache:'no-store'});
+    if(!res.ok) throw new Error('같은 폴더에서 papers.json을 찾지 못했습니다.');
+    paperData = normalizePapersPayload(await res.json());
+    try{ paperNotes = normalizeNotesPayload(JSON.parse(localStorage.getItem(LOCAL_NOTES_KEY) || '{}')); }catch(e){ paperNotes = {}; }
+    renderAll();
+    setStatus(`로컬 papers.json에서 ${paperData.length}개 논문을 불러왔습니다. Dropbox 저장은 로그인 후 사용할 수 있습니다.`);
+  }catch(e){ setStatus('로컬 papers.json 불러오기 실패: '+(e.message||e), 'error'); }
+}
+
+function renderAll(){
+  renderImportanceFilters();
+  renderSourceFilters();
+  refreshTagFilters();
+  renderPapers();
+  updateAuthButtons();
+}
+function renderImportanceFilters(){
+  const box=document.getElementById('importance-filter-box');
+  box.innerHTML = ['rated','5','4','3','2','1'].map(v=>`<label class="checkline"><input type="checkbox" class="filter-importance" value="${v}" onchange="applyPaperFilters()"> ${v==='rated'?'입력됨':v}</label>`).join('');
+}
+function renderSourceFilters(){
+  const sources = Array.from(new Set(paperData.map(p=>p.source).filter(Boolean))).sort();
+  const box=document.getElementById('source-filter-box');
+  box.innerHTML = sources.length ? sources.map(s=>`<label class="checkline"><input type="checkbox" class="filter-source" value="${escapeHtml(s)}" onchange="applyPaperFilters()" checked> ${escapeHtml(s)}</label>`).join('') : '<span class="small">논문 데이터 없음</span>';
+}
+function setAllSources(flag){ document.querySelectorAll('.filter-source').forEach(x=>x.checked=flag); applyPaperFilters(); }
+function refreshTagFilters(){
+  collectNotesFromPage();
+  const tags = new Set();
+  Object.values(paperNotes).forEach(n => (n.tags||[]).forEach(t=>tags.add(t)));
+  const box=document.getElementById('tag-filter-box');
+  const sorted=Array.from(tags).sort((a,b)=>a.localeCompare(b));
+  box.innerHTML = sorted.length ? sorted.map(t=>`<label class="checkline"><input type="checkbox" class="filter-tag" value="${escapeHtml(t)}" onchange="applyPaperFilters()"> ${escapeHtml(t)}</label>`).join('') : '<span class="small">아직 입력된 tag 없음</span>';
+  applyPaperFilters();
+}
+function noteFor(id){ return paperNotes[String(id)] || {importance:'', read_later:false, memo:'', tags:[]}; }
+function renderPapers(){
+  const groups = {};
+  paperData.forEach(p=>{ const d = (p.fetched || p.published || p.paper_date || 'No date').slice(0,10); (groups[d] ||= []).push(p); });
+  const dates = Object.keys(groups).sort().reverse();
+  let html = '';
+  if(!paperData.length){ html='<p class="empty">표시할 논문 데이터가 없습니다. Dropbox App folder에 papers.json이 있는지 확인하세요.</p>'; }
+  dates.forEach(date=>{
+    html += `<details open class="date-group"><summary class="date">📅 ${escapeHtml(date)} (<span class="group-count">${groups[date].length}</span>/${groups[date].length})</summary>`;
+    groups[date].forEach(p=>{
+      const n=noteFor(p.id);
+      const meta = [
+        `<b>${escapeHtml(p.source||'')}</b>`, escapeHtml(p.published || p.paper_date || '—'),
+        p.authors ? `Authors: <b>${escapeHtml(p.authors)}</b>` : '',
+        p.jel ? `JEL: <b>${escapeHtml(p.jel)}</b>` : 'JEL: <b>—</b>',
+        p.keywords ? `Keywords: <b>${escapeHtml(p.keywords)}</b>` : ''
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      const summary = p.summary ? `<div class="summary"><b>🤖 GPT Summary</b><br>${escapeHtml(p.summary).replace(/\n/g,'<br>')}</div>` : '';
+      const abs = p.abstract ? `<details><summary>Abstract</summary><div class="abstract">${escapeHtml(p.abstract)}</div></details>` : '';
+      html += `<div class="card paper-card" data-paper-id="${escapeHtml(p.id)}" data-source="${escapeHtml(p.source||'')}">
+        <div class="title"><a href="${escapeHtml(p.link||'#')}" target="_blank" rel="noopener">${escapeHtml(p.title||'(No title)')}</a></div>
+        <div class="meta">${meta}</div>
+        <div class="annotation-panel">
+          <label>중요성<br><select class="importance" onchange="paperAnnotationChanged(this)"><option value="">—</option>${['5','4','3','2','1'].map(v=>`<option value="${v}" ${n.importance===v?'selected':''}>${v}</option>`).join('')}</select></label>
+          <label><input type="checkbox" class="read-later" onchange="paperAnnotationChanged(this)" ${n.read_later?'checked':''}> 나중에 직접 읽기</label>
+          <label>Tags<br><textarea class="user-tags" placeholder="쉼표 또는 줄바꿈으로 구분" oninput="paperAnnotationChanged(this)">${escapeHtml((n.tags||[]).join(', '))}</textarea></label>
+          <label>메모<br><textarea class="memo" placeholder="간단한 메모" oninput="paperAnnotationChanged(this)">${escapeHtml(n.memo||'')}</textarea></label>
+        </div>${summary}${abs}</div>`;
+    });
+    html += '</details>';
+  });
+  document.getElementById('papers-container').innerHTML = html;
+  applyPaperFilters();
+}
+function updateNoteFromCard(card){
+  const id = card.dataset.paperId;
+  const n = {importance:cleanImportance(card.querySelector('.importance').value), read_later:card.querySelector('.read-later').checked, memo:card.querySelector('.memo').value || '', tags:splitTags(card.querySelector('.user-tags').value)};
+  if(n.importance || n.read_later || n.memo.trim() || n.tags.length) paperNotes[id] = n; else delete paperNotes[id];
+}
+function collectNotesFromPage(){ document.querySelectorAll('.paper-card').forEach(updateNoteFromCard); return paperNotes; }
+function paperAnnotationChanged(el){ updateNoteFromCard(el.closest('.paper-card')); saveNotesLocal(false); applyPaperFilters(); }
+function saveNotesLocal(show=true){
+  try{ localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(notesPayload(), null, 2)); if(show) setMessage('notes-msg','브라우저에 임시저장했습니다. 영구 보관은 Dropbox 저장을 누르세요.'); }catch(e){ if(show) setMessage('notes-msg','브라우저 임시저장 실패: '+e.message,'error'); }
+}
+function downloadNotesJson(){ const blob=new Blob([JSON.stringify(notesPayload(),null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='paper_notes.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+function copyNotesJson(){ navigator.clipboard.writeText(JSON.stringify(notesPayload(),null,2)).then(()=>setMessage('notes-msg','복사되었습니다.')).catch(()=>setMessage('notes-msg','복사 실패','error')); }
+function getCheckedValues(sel){ return Array.from(document.querySelectorAll(sel+':checked')).map(x=>x.value); }
+function textForSearch(p,n){ return [p.title,p.authors,p.abstract,p.summary,p.keywords,p.jel,n.memo,(n.tags||[]).join(' ')].join(' ').toLowerCase(); }
+function applyPaperFilters(){
+  collectNotesFromPage();
+  const terms = String(document.getElementById('search-box').value || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const imps = getCheckedValues('.filter-importance');
+  const srcs = getCheckedValues('.filter-source');
+  const allSrcCount = document.querySelectorAll('.filter-source').length;
+  const tags = getCheckedValues('.filter-tag').map(x=>x.toLowerCase());
+  const read = document.getElementById('filter-read-later').value;
+  let shown=0,total=0;
+  document.querySelectorAll('.paper-card').forEach(card=>{
+    total += 1;
+    const id=card.dataset.paperId; const p=paperData.find(x=>String(x.id)===String(id)) || {}; const n=noteFor(id);
+    let ok=true;
+    if(terms.length) ok = ok && terms.every(t => textForSearch(p,n).includes(t));
+    if(imps.length){ ok = ok && (imps.includes('rated') ? !!cleanImportance(n.importance) : imps.includes(cleanImportance(n.importance))); }
+    if(srcs.length && srcs.length < allSrcCount){ ok = ok && srcs.includes(card.dataset.source || ''); }
+    if(tags.length){ const ntags=(n.tags||[]).map(x=>x.toLowerCase()); ok = ok && tags.every(t=>ntags.includes(t)); }
+    if(read==='yes') ok = ok && !!n.read_later;
+    if(read==='no') ok = ok && !n.read_later;
+    card.style.display = ok ? '' : 'none';
+    if(ok) shown += 1;
+  });
+  document.querySelectorAll('.date-group').forEach(group=>{
+    const cards=Array.from(group.querySelectorAll('.paper-card'));
+    const visible=cards.filter(c=>c.style.display !== 'none').length;
+    group.style.display = visible ? '' : 'none';
+    const gc=group.querySelector('.group-count'); if(gc) gc.textContent=visible;
+  });
+  const c=document.getElementById('filter-count'); if(c) c.textContent = `표시 ${shown} / 전체 ${total}`;
+}
+function resetReviewFilters(){
+  document.getElementById('search-box').value=''; document.getElementById('filter-read-later').value='all';
+  document.querySelectorAll('.filter-importance,.filter-tag').forEach(x=>x.checked=false);
+  document.querySelectorAll('.filter-source').forEach(x=>x.checked=true);
+  applyPaperFilters();
+}
+
+(async function init(){
+  loadStoredToken();
+  await handleOAuthCallback();
+  try{
+    const cached = localStorage.getItem(LOCAL_NOTES_KEY);
+    if(cached){ paperNotes = normalizeNotesPayload(JSON.parse(cached)); setMessage('notes-msg','브라우저 임시저장 notes를 불러왔습니다. Dropbox에서 불러오면 Dropbox 데이터로 대체됩니다.','warn'); }
+  }catch(e){}
+  if(currentToken && (currentToken.access_token || currentToken.refresh_token)){ setStatus('Dropbox 연결 정보가 있습니다. Dropbox에서 불러오기를 누르세요.'); }
+  else { setStatus('먼저 Dropbox 로그인을 누르세요.'); }
+})();
+</script>
+</body>
+</html>
